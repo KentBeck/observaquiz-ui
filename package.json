@@ -39,6 +39,7 @@
     "@opentelemetry/sdk-trace-web": "^1.25.1",
     "@opentelemetry/semantic-conventions": "^1.25.1",
     "@uidotdev/usehooks": "^2.4.1",
+    "observaquiz-contracts": "github:KentBeck/observaquiz-contracts",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-error-boundary": "^4.0.12",
