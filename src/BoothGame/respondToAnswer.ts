@@ -1,24 +1,41 @@
 import { ActiveLifecycleSpanType } from "../tracing/activeLifecycleSpan";
 import { HoneycombTeamContextType } from "./HoneycombTeamContext";
 import { fetchFromBackend } from "../tracing/fetchFromBackend";
+import { AnswerResponse } from "observaquiz-contracts/types/quiz-types";
 
 export type ResponseFromAI =
   | {
     status: "success";
-    response: AnswersAPIResponse;
+    response: AnswerResponse;
   }
   | { status: "failure"; error: string };
 
-type AnswersAPIResponse = {
+// Legacy API response format (what the current backend returns)
+type LegacyAnswerAPIResponse = {
   score: number;
   possible_score: number;
   response: string;
-  evaluation_id: string
+  evaluation_id: string;
 };
 
-function verifyResponse(
+// Adapter function to convert legacy answer response to contract format
+function adaptLegacyAnswerToContract(legacy: LegacyAnswerAPIResponse, sessionId: string): AnswerResponse {
+  // Determine if answer is correct based on score (this is a heuristic)
+  const maxScore = legacy.possible_score || 100;
+  const correct = legacy.score >= (maxScore * 0.7); // Consider 70%+ as correct
+
+  return {
+    correct,
+    explanation: legacy.response,
+    session_id: sessionId,
+    score: legacy.score,
+    quiz_complete: false // We don't have this info in legacy format
+  };
+}
+
+function verifyLegacyResponse(
   response: any
-): { status: "rejected"; reasons: string[] } | { status: "success"; response: AnswersAPIResponse } {
+): { status: "rejected"; reasons: string[] } | { status: "success"; response: LegacyAnswerAPIResponse } {
   const rejections = [];
   if (!response) {
     rejections.push("Response is empty");
@@ -39,7 +56,7 @@ function verifyResponse(
   if (rejections.length > 0) {
     return { status: "rejected", reasons: rejections };
   } else {
-    return { status: "success", response: response as AnswersAPIResponse };
+    return { status: "success", response: response as LegacyAnswerAPIResponse };
   }
 }
 
@@ -71,11 +88,22 @@ export function fetchResponseToAnswer(
     },
   })
     .then<ResponseFromAI>((json) => {
-      const result = verifyResponse(json);
+      const result = verifyLegacyResponse(json);
       if (result.status === "rejected") {
         return { status: "failure", error: result.reasons.join(", ") };
       }
-      return result;
+
+      // Convert legacy response to contract format
+      const sessionId = "default-session"; // TODO: Get actual session ID from context
+      const contractResponse = adaptLegacyAnswerToContract(result.response, sessionId);
+
+      span.addLog("answer response adapted to contract", {
+        "app.answer.contract_format": "AnswerResponse",
+        "app.answer.correct": contractResponse.correct,
+        "app.answer.score": contractResponse.score
+      });
+
+      return { status: "success", response: contractResponse };
     })
     .catch<ResponseFromAI>((error: Error) => {
       return { status: "failure", error: error.message };

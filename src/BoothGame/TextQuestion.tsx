@@ -183,11 +183,16 @@ function TextQuestionInternal(props: QuestionProps) {
           setResponse(response.error || "it didn't even give me an error");
           setState(ErrorState, { reason: "failed to fetch response" });
         } else {
-          setHighScore(Math.max(highScore, response.response.score));
-          // success
-          const interpretation = `I give that a ${response.response.score}/${response.response.possible_score}. ${response.response.response}`;
+          const score = response.response.score || 0;
+          const explanation = response.response.explanation || "No explanation provided";
+
+          setHighScore(Math.max(highScore, score));
+          // success - adapted for contract format
+          const interpretation = `I give that a ${score}/100. ${explanation}`;
           setResponse(interpretation);
-          setEvaluationId(response.response.evaluation_id);
+
+          // Note: evaluation_id is not available in contract format, using session_id as fallback
+          setEvaluationId(response.response.session_id);
           setState(ShowingResponse, { reason: "answer received" });
         }
       }
